@@ -1,8 +1,13 @@
 __pycache__/
 *.py[cod]
 .venv/
-data/
-models/
+
+# data — ignore everything except the loghub submodule reference
+data/raw/lanl/
+data/raw/cicids/
+data/processed/
+data/synthetic/models/
+
 *.pcap
 *.png
 *.jpg
