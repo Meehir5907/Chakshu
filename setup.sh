@@ -13,8 +13,7 @@ echo "Pulling loghub submodule..."
 git submodule update --init --recursive
 
 # ── Directory structure ───────────────────────────────────────────
-mkdir -p data/raw/lanl/netflow
-mkdir -p data/raw/lanl/wls
+mkdir -p data/raw/lanl/{netflow,wls}
 mkdir -p data/raw/cicids
 mkdir -p data/processed
 mkdir -p data/synthetic
@@ -43,11 +42,11 @@ echo "Once downloaded, place files in: data/raw/lanl/"
 # ── CICIDS dataset ────────────────────────────────────────────────
 echo ""
 echo "Downloading CICIDS2017..."
-kaggle datasets download -d  chethuhn/network-intrusion-dataset -p data/raw/cicids/ --unzip
+kaggle datasets download -d chethuhn/network-intrusion-dataset -p data/raw/cicids/ --unzip
 
 # ── Done ──────────────────────────────────────────────────────────
 echo ""
 echo "Setup complete. Next steps:"
-echo "  1. Place LANL files in:   data/raw/lanl/"
+echo "  1. Place LANL files in:   data/raw/lanl/{wls,netflow}"
 echo "  2. Place CICIDS files in: data/raw/cicids/"
 echo "  3. Loghub is ready at:    data/raw/loghub/"
