@@ -33,6 +33,7 @@ Write-Host "Once downloaded, place files in: data/raw/lanl/wls/ and data/raw/lan
 # ── CICIDS dataset ────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Downloading CICIDS2017..."
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 kaggle datasets download -d chethuhn/network-intrusion-dataset -p data\raw\cicids\ --unzip
 
 # ── Done ──────────────────────────────────────────────────────────
