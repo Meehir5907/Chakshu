@@ -28,7 +28,7 @@ Write-Host ""
 Write-Host "LANL dataset requires manual download via browser."
 Write-Host "Opening download page..."
 Start-Process "https://csr.lanl.gov/data/2017/"
-Write-Host "Once downloaded, place files in: data\raw\lanl\{netflow,wls}"
+Write-Host "Once downloaded, place files in: data/raw/lanl/wls/ and data/raw/lanl/netflow/ accordingly"
 
 # ── CICIDS dataset ────────────────────────────────────────────────
 Write-Host ""
