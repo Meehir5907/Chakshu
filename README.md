@@ -67,9 +67,8 @@ Chakshu/
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.14+
 - Git
-- [Kaggle API key](https://www.kaggle.com/docs/api#authentication) placed at `~/.kaggle/kaggle.json`
 
 ### Linux / Mac
 
