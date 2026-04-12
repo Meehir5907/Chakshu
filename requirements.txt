@@ -3,3 +3,4 @@ pandas
 shap
 joblib
 scikit-learn
+lime

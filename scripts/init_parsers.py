@@ -61,7 +61,9 @@ def parse_loghub(file_path, out_dir, log_tag):
             "evt_id": str(row.get('EventId', '0')),
             "act": log_tag,
             "b_in": 0,
-            "b_out": 0
+            "b_out": 0,
+            # NEW: Preserve the raw log text for the L7 Web/App Specialist
+            "payload": str(row.get('Content', '')) 
         }
         out_list.append(out_dict)
         
