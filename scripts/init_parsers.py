@@ -48,8 +48,11 @@ def parse_loghub(file_path, out_dir, log_tag):
     out_list = []
     
     for _, row in raw_data.iterrows():
-        # Grab the combined Time string directly
-        time_val = str(row.get('Time', "1970-01-01T00:00:00Z"))
+        # THE FIX: Dynamically handle split Linux/Windows timestamps vs Apache timestamps
+        if 'Month' in row and 'Date' in row and 'Time' in row:
+            time_val = f"{row.get('Month', '')} {row.get('Date', '')} {row.get('Time', '')}".strip()
+        else:
+            time_val = str(row.get('Time', "1970-01-01T00:00:00Z"))
             
         out_dict = {
             "ts": time_val,
@@ -62,7 +65,6 @@ def parse_loghub(file_path, out_dir, log_tag):
             "act": log_tag,
             "b_in": 0,
             "b_out": 0,
-            # NEW: Preserve the raw log text for the L7 Web/App Specialist
             "payload": str(row.get('Content', '')) 
         }
         out_list.append(out_dict)
@@ -76,6 +78,7 @@ def parse_loghub(file_path, out_dir, log_tag):
 def init_parsers():
     cicids_path = "data/raw/cicids/Monday-WorkingHours.pcap_ISCX.csv"
     apache_path = "data/raw/loghub/Apache/Apache_2k.log_structured.csv"
+    linux_path = "data/raw/loghub/Linux/Linux_2k.log_structured.csv"
     out_dir = "data/processed"
     
     if not os.path.exists(out_dir):
@@ -88,6 +91,9 @@ def init_parsers():
     if os.path.exists(apache_path):
         print(f"Parsing {apache_path}...")
         parse_loghub(apache_path, out_dir, "WEB_APP")
+    if os.path.exists(linux_path):
+        print(f"Parsing {linux_path}...")
+        parse_loghub(linux_path, out_dir, "HOST_LINUX")
 
 if __name__ == "__main__":
     init_parsers()
