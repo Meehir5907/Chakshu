@@ -1,13 +1,15 @@
+# Python stuff
 __pycache__/
 *.py[cod]
 .venv/
+*.pyc
 
 # data — ignore everything except the loghub submodule reference
-data/raw/lanl/
-data/raw/cicids/
-data/processed/
-data/synthetic/models/
+data/raw/**
+data/processed/**
+data/synthetic/**
 
-*.pcap
-*.png
-*.jpg
+# Trained ML Artifacts
+models/**/*.pkl
+models/**/*.pt
+models/**/*.pth

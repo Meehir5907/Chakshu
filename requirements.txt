@@ -1,2 +1,5 @@
 kaggle
-
+pandas
+shap
+joblib
+scikit-learn
