@@ -48,10 +48,15 @@ def parse_loghub(file_path, out_dir, log_tag):
     out_list = []
     
     for _, row in raw_data.iterrows():
-        # THE FIX: Dynamically handle split Linux/Windows timestamps vs Apache timestamps
+        # Dynamically handle split Linux/Windows timestamps vs Apache timestamps
         if 'Month' in row and 'Date' in row and 'Time' in row:
+            # Linux Format (Jun 14 15:16:01)
             time_val = f"{row.get('Month', '')} {row.get('Date', '')} {row.get('Time', '')}".strip()
+        elif 'Date' in row and 'Time' in row:
+            # Windows Format (2016-09-28T04:30:30Z)
+            time_val = f"{row.get('Date', '')}T{row.get('Time', '')}Z"
         else:
+            # Apache Format (Sun Dec 04 04:47:44 2005)
             time_val = str(row.get('Time', "1970-01-01T00:00:00Z"))
             
         out_dict = {
@@ -79,6 +84,7 @@ def init_parsers():
     cicids_path = "data/raw/cicids/Monday-WorkingHours.pcap_ISCX.csv"
     apache_path = "data/raw/loghub/Apache/Apache_2k.log_structured.csv"
     linux_path = "data/raw/loghub/Linux/Linux_2k.log_structured.csv"
+    windows_path = "data/raw/loghub/Windows/Windows_2k.log_structured.csv"
     out_dir = "data/processed"
     
     if not os.path.exists(out_dir):
@@ -91,9 +97,14 @@ def init_parsers():
     if os.path.exists(apache_path):
         print(f"Parsing {apache_path}...")
         parse_loghub(apache_path, out_dir, "WEB_APP")
+        
     if os.path.exists(linux_path):
         print(f"Parsing {linux_path}...")
         parse_loghub(linux_path, out_dir, "HOST_LINUX")
+        
+    if os.path.exists(windows_path):
+        print(f"Parsing {windows_path}...")
+        parse_loghub(windows_path, out_dir, "HOST_WINDOWS")
 
 if __name__ == "__main__":
     init_parsers()
