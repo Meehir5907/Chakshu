@@ -6,8 +6,7 @@ def run_mass_recon():
     engine = ChakshuFusion()
     processed_dir = "data/processed"
     
-    # We'll test on the Linux logs first to see the Host Specialist in action
-    target_file = os.path.join(processed_dir, "Linux_2k.log_structured.json")
+    target_file = os.path.join(processed_dir, "Windows_2k.log_structured.json")
     
     if not os.path.exists(target_file):
         print(f"[!] Target file {target_file} not found.")

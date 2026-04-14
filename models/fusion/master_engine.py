@@ -1,3 +1,4 @@
+import re
 import joblib
 import os
 import pandas as pd
@@ -45,10 +46,29 @@ class ChakshuFusion:
         self.history = []
         self.win_size = 60
         self.weights = {"L3_L4": 1, "WEB_APP": 2, "HOST_LIN": 3, "HOST_WIN": 3}
+        
+        # TUNING: The Noise Floor
+        self.whitelist = [
+            "user news", "user cyrus", "cupsd shutdown", "session closed", "ALERT exited", "jk2_init", "mod_jk"]
+
+    def extract_ip(self, payload, default_ip):
+        # If the parser gave us a real IP, use it
+        if default_ip != "0.0.0.0" and default_ip != "":
+            return default_ip
+            
+        # Regex 1: Standard IPv4 (e.g., 82.252.162.81)
+        match_std = re.search(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b', payload)
+        if match_std: return match_std.group(0)
+        
+        # Regex 2: Hyphenated hostnames (e.g., rhost=220-135-151-1)
+        match_hyphen = re.search(r'rhost=([0-9]{1,3}(?:-[0-9]{1,3}){3})', payload)
+        if match_hyphen: return match_hyphen.group(1).replace('-', '.')
+        
+        return default_ip
 
     def check_os(self, payload):
         win_sig = ["C:\\", ".exe", ".dll", "EventID", "Microsoft"]
-        lin_sig = ["/var/log", "systemd", "pam_unix", "sshd", "root", "/tmp"]
+        lin_sig = ["/var/log", "systemd", "pam_unix", "sshd", "root", "/tmp", "authentication failure"]
         if any(s in payload for s in win_sig): return "HOST_WIN"
         if any(s in payload for s in lin_sig): return "HOST_LIN"
         return None
@@ -64,8 +84,14 @@ class ChakshuFusion:
     def process_frame(self, log):
         payload = log.get("payload", "")
         tag = log.get("act", "L3_L4")
-        src_ip = log.get("src_ip", "0.0.0.0")
         ts_raw = log.get("ts", datetime.now().isoformat())
+        
+        # FIX 1: Noise Filter Check
+        if any(w in payload for w in self.whitelist):
+            return None
+
+        # FIX 2: Dynamic IP Extraction
+        src_ip = self.extract_ip(payload, log.get("src_ip", "0.0.0.0"))
         
         try:
             ts = datetime.fromisoformat(ts_raw.replace('Z', ''))
@@ -94,27 +120,21 @@ class ChakshuFusion:
         if base_score > 0.5 and vec:
             try:
                 fn = self.get_proba_fn(mdl, vec)
-                # FIX: Explicitly pass labels=[0] so LIME calculates weights for the Anomaly class
-                exp = self.explainer.explain_instance(
-                    payload, 
-                    fn, 
-                    labels=(0,), 
-                    num_features=5, 
-                    num_samples=1000
-                )
+                exp = self.explainer.explain_instance(payload, fn, labels=(0,), num_features=5, num_samples=1000)
                 forensics = [str(text) for text, weight in exp.as_list(label=0) if weight > 0]
-            except Exception as e:
-                # Fallback if LIME math fails due to payload length or boundary edge cases
+            except:
                 forensics = ["Structural Anomaly (XAI Timeout)"]
 
         bonus = 0.0
         cutoff = ts - timedelta(seconds=self.win_size)
         self.history = [h for h in self.history if h["ts"] > cutoff]
         
-        for prev in self.history:
-            if prev["src_ip"] == src_ip and prev["tag"] != tag:
-                bonus = 0.3
-                break
+        # Only apply correlation bonus if we have a valid, non-zero IP
+        if src_ip != "0.0.0.0":
+            for prev in self.history:
+                if prev["src_ip"] == src_ip and prev["tag"] != tag:
+                    bonus = 0.3
+                    break
 
         w = self.weights.get(tag, 1)
         final_score = min(1.0, (base_score * w / 3.0) + bonus)
