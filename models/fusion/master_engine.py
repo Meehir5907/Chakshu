@@ -49,7 +49,10 @@ class ChakshuFusion:
         
         # TUNING: The Noise Floor
         self.whitelist = [
-            "user news", "user cyrus", "cupsd shutdown", "session closed", "ALERT exited", "jk2_init", "mod_jk"]
+            "user news", "user cyrus", "cupsd shutdown", "session closed", "ALERT exited",
+            "jk2_init", "mod_jk",
+            "Unrecognized packageExtended", "SQM:", "TrustedInstaller", "Session:", "cached package applicability"
+        ]
 
     def extract_ip(self, payload, default_ip):
         # If the parser gave us a real IP, use it
