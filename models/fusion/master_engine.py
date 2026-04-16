@@ -12,6 +12,8 @@ class AssetLoader:
         self.registry = {
             "L3_L4": {"mdl": "network_flow/iforest_v1.pkl", "vec": None},
             "WEB_APP": {"mdl": "network_app/svm_v1.pkl", "vec": "network_app/tfidf_v1.pkl"},
+            "AUTH_LINUX": {"mdl": "auth_linux/svm_v1.pkl", "vec": "auth_linux/tfidf_v1.pkl"},
+            "AUTH_WINDOWS": {"mdl": "auth_windows/svm_v1.pkl", "vec": "auth_windows/tfidf_v1.pkl"},
             "HOST_LIN": {"mdl": "host_linux_mac/svm_v1.pkl", "vec": "host_linux_mac/tfidf_v1.pkl"},
             "HOST_WIN": {"mdl": "host_windows/svm_v1.pkl", "vec": "host_windows/tfidf_v1.pkl"}
         }
@@ -19,8 +21,8 @@ class AssetLoader:
         self.cache_vec = {}
 
     def fetch(self, tag):
-        reg_tag = "HOST_LIN" if "LINUX" in tag else tag
-        reg_tag = "HOST_WIN" if "WINDOWS" in tag else reg_tag
+        reg_tag = "HOST_LIN" if tag == "HOST_LINUX" else tag
+        reg_tag = "HOST_WIN" if tag == "HOST_WINDOWS" else reg_tag
 
         if reg_tag not in self.cache_mdl:
             cfg = self.registry.get(reg_tag)
@@ -45,7 +47,11 @@ class ChakshuFusion:
         self.explainer = LimeTextExplainer(class_names=['Anomaly', 'Normal'], split_expression=r'\s+')
         self.history = []
         self.win_size = 60
-        self.weights = {"L3_L4": 1, "WEB_APP": 2, "HOST_LIN": 3, "HOST_WIN": 3}
+        self.weights = {
+            "L3_L4": 1, "WEB_APP": 2, 
+            "AUTH_LINUX": 3, "AUTH_WINDOWS": 3, 
+            "HOST_LIN": 3, "HOST_WIN": 3
+        }
         
         # TUNING: The Noise Floor
         self.whitelist = [
