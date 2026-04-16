@@ -1,88 +1,75 @@
 # Chakshu
 
-Chakshu is an AI-driven forensic framework for automated ingestion, correlation, and analysis of diverse log data. It acts as an intelligent assistant to investigators, converting raw logs from heterogeneous sources into a unified, tamper-proof timeline of events.
+**Chakshu** is an advanced, AI-driven Managed Detection and Response (MDR) pipeline and multi-layered SIEM framework. It acts as an intelligent assistant to Security Operations Center (SOC) analysts, automatically ingesting heterogeneous logs, detecting Zero-Day anomalies, and reconstructing multi-stage attack narratives using Explainable AI (XAI).
 
-Modern IT environments generate logs at a scale and velocity that makes manual review impossible. Logs exist across fragmented formats — network flows, OS events, authentication records — each requiring specialist knowledge to interpret. Chakshu addresses this by normalising all log types into a common schema, running specialist AI models per log domain, and correlating findings across domains to surface attack chains that no single model would detect alone.
-
----
-
-## Architecture
-
-Chakshu uses a four-model hybrid architecture:
-
-- **Network specialist** — analyses network flow data (src/dst IPs, ports, bytes, protocol) for traffic anomalies and C2 patterns
-- **Host specialist** — analyses OS-level process and file events for suspicious execution chains
-- **Auth specialist** — analyses authentication events for brute force, lateral movement, and privilege escalation
-- **Fusion model** — receives scored outputs from all three specialists and correlates cross-domain attack chains, mapped to MITRE ATT&CK techniques
-
-All logs are normalised into a common JSON schema before reaching any model, ensuring a clean contract between the ingestion layer and the analysis engine.
+Instead of relying on a monolithic system or rigid regex rules, Chakshu deploys a localized fleet of Machine Learning "Specialists" tailored to specific infrastructure layers, orchestrated by a central Fusion Engine.
 
 ---
 
-## Repo Structure
+## Architecture & Repo Structure
 
-```
+Chakshu is divided into a four-phase operational pipeline. The following structure represents the core logic of the framework:
+
+```text
 Chakshu/
-├── data/
-│   ├── raw/
-│   │   ├── loghub/          # git submodule — 16+ log types (Linux, Windows, Apache, SSH, etc.)
-│   │   ├── lanl/
-│   │   │   ├── netflow/     # LANL network flow logs (.bz2)
-│   │   │   └── wls/         # LANL Windows host + auth logs (.bz2)
-│   │   └── cicids/          # CICIDS 2017 network intrusion dataset (CSV)
-│   ├── processed/           # logs normalised into JSON schema (gitignored)
-│   └── synthetic/           # generated attack scenarios for augmentation (gitignored)
-│
-├── schema/
-│   └── log_schema.json      # unified JSON schema — the contract for the entire system
-│
+├── ai_engine/               # Specialist Inference scripts (Unit Testing)
+│   ├── linux_inference.py
+│   ├── network_inference.py
+│   ├── webapp_inference.py
+│   └── windows_inference.py
 ├── models/
-│   ├── network/             # network specialist model
-│   ├── host/                # host / OS specialist model
-│   ├── auth/                # auth specialist model
-│   └── fusion/              # cross-domain correlation model
-│
-├── parsers/                 # raw dataset → JSON schema mappers
-│   ├── loghub_parser.py
-│   ├── lanl_parser.py
-│   └── cicids_parser.py
-│
-├── training/                # training scripts per model
-│   ├── train_network.py
-│   ├── train_host.py
-│   ├── train_auth.py
-│   └── train_fusion.py
-│
-├── evaluation/              # metrics, benchmarks, confusion matrices
-├── notebooks/               # exploratory data analysis
-├── tests/
-├── setup.sh                 # setup script — Linux / Mac
-├── setup.ps1                # setup script — Windows
-└── requirements.txt
+│   └── fusion/
+│       └── master_engine.py # The Central Fusion & Correlation Brain
+├── scripts/                 # Ingestion & Model Training Suite
+│   ├── init_parsers.py      # Normalizes heterogeneous logs to JSON schema
+│   ├── train_auth_linux.py
+│   ├── train_auth_windows.py
+│   ├── train_host_linux.py
+│   ├── train_host_windows.py
+│   ├── train_network_flow.py
+│   └── train_webapp_specialist.py
+├── ingest_test.py           # Master forensic reconstruction script
+├── requirements.txt         # Project dependencies
+├── setup.sh                 # Linux/Mac environment setup
+└── setup.ps1                # Windows environment setup
 ```
+
+### 1. Data Normalization (`init_parsers.py`)
+Standardizes raw telemetry into a unified JSON schema: `{ "ts", "src_ip", "payload", "act" }`. It includes dynamic extraction for IPv4 addresses hidden within complex syslog or HTTP error payloads.
+
+### 2. The Specialist Fleet (Detection Layer)
+Routes normalized logs to specialized ML models based on OS autodetection.
+
+| Specialist | Algorithm | Feature Engineering | Target Threats | XAI Tool |
+|------------|-----------|---------------------|----------------|----------|
+| **Network (L3/L4)** | Isolation Forest | Numerical (`dst_pt`, bytes) | DDoS, Port Scans | SHAP |
+| **Web App (L7)** | One-Class SVM | Char N-Grams (TF-IDF) | SQLi, XSS, Path Traversal | LIME |
+| **Auth Gateway** | One-Class SVM | Char N-Grams (TF-IDF) | SSH/RDP Brute Force, AD Anomalies | LIME |
+| **OS Execution** | One-Class SVM | Char N-Grams (TF-IDF) | Reverse Shells, Obfuscated PS1 | LIME |
+
+### 3. The Fusion Engine (`master_engine.py`)
+The orchestrator that applies a **60-second temporal sliding window** to correlate events across layers. It handles **"Structural Anomalies"** where payloads are mathematically too alien for LIME to isolate a single word.
 
 ---
 
-## Setup
+## Setup & Installation
 
 ### Prerequisites
-
-- Python 3.14+
+- Python 3.10+
 - Git
 
 ### Linux / Mac
-
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-### Windows (PowerShell)
+### Windows Powershell
 
 First, allow script execution if not already enabled:
 
 ```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUse
 ```
 
 Then run:
@@ -90,8 +77,28 @@ Then run:
 ```powershell
 .\setup.ps1
 ```
-
 ---
+
+## Usage Workflow
+
+**1. Parse the Raw Data**
+Converts raw CSV and streaming BZ2 files into Chakshu's unified JSON schema.
+```bash
+python scripts/init_parsers.py
+```
+
+**2. Train the Specialists**
+Train the localized ML models to establish benign baselines.
+```bash
+python scripts/train_auth_linux.py
+python scripts/train_auth_windows.py
+```
+
+**3. Run Forensic Reconstruction**
+Feed the unified JSON stream into the Fusion Engine for cross-layer correlation.
+```bash
+python ingest_test.py
+```
 
 ## Datasets
 
