@@ -74,11 +74,11 @@ def run_full_pipeline():
                 logs_since_push = 0
                 last_push_timestamp = current_timestamp
 
-    export_alerts(fusion_engine.history, dashboard_filepath)
+    export_alerts(fusion_engine.all_alerts, dashboard_filepath)
 
     print(f"\n==================================================")
     print(f"--- Recon Complete. Processed {total_scanned_records} total records. ---")
-    print(f"Total Anomalies Found: {len(fusion_engine.history)}")
+    print(f"Total Anomalies Found: {len(fusion_engine.all_alerts)}")
     print(f"==================================================\n")
 
 if __name__ == "__main__":
