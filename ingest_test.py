@@ -30,5 +30,21 @@ def run_mass_recon():
 
     print(f"--- Recon Complete. Found {anomalies_found} anomalies. ---")
 
+    # Export to JSON for the Dashboard
+    out_file = "data/processed/alerts.json"
+    os.makedirs(os.path.dirname(out_file), exist_ok=True)
+    
+    # Convert timestamps to strings for JSON serialization
+    export_history = []
+    for alert in engine.history:
+        alert_copy = alert.copy()
+        alert_copy["ts"] = alert_copy["ts"].isoformat()
+        export_history.append(alert_copy)
+
+    with open(out_file, "w") as f:
+        json.dump(export_history, f, indent=4)
+        
+    print(f"\n[+] Exported {len(export_history)} alerts to {out_file} for Dashboard.")
+
 if __name__ == "__main__":
     run_mass_recon()
