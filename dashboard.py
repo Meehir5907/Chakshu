@@ -25,6 +25,17 @@ def load_data():
 
 df = load_data()
 
+with st.sidebar:
+    st.header("Admin Controls")
+    if st.button("🗑️ Clear All Alerts", help="This will permanently delete alerts.json"):
+        if os.path.exists(data_path):
+            os.remove(data_path)
+            # Clear the streamlit cache so the warning appears immediately
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.info("No alert file found to delete.")
+
 if df.empty:
     st.warning(f"No alerts detected. Please ensure {data_path} exists and contains data.")
 else:
