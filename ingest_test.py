@@ -21,13 +21,12 @@ def run_full_pipeline():
     dashboard_filepath = "data/processed/alerts.json"
     
     dataset_files = [
-        #"Monday-WorkingHours.pcap_ISCX.json",
         "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.json",
-        #"Apache_2k.log_structured.json",      
-        #"OpenSSH_2k.log_structured.json",     
-        #"LANL_WLS_2k.json",                   
-        #"Linux_2k.log_structured.json",       
-        #"Windows_2k.log_structured.json"      
+        "Apache_2k.log_structured.json",      
+        "OpenSSH_2k.log_structured.json",     
+        "LANL_WLS_2k.json",                   
+        "Linux_2k.log_structured.json",       
+        "Windows_2k.log_structured.json"      
     ]
     
     fusion_engine = ChakshuFusion()
@@ -50,7 +49,14 @@ def run_full_pipeline():
             except Exception as error_msg:
                 continue
             
-        for single_log_frame in log_frames:
+        for idx, single_log_frame in enumerate(log_frames):
+            # Targeted scan logic for Friday DDoS file
+            if "Friday-WorkingHours-Afternoon-DDos" in dataset_name:
+                if 10 <= idx < 1884:
+                    continue  # Jump to block 1884
+                if idx >= 1884 + 20:
+                    break  # Stop scanning after 20 entries from block 1884
+            
             total_scanned_records += 1
             logs_since_push += 1
             
