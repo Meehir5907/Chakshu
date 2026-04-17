@@ -29,9 +29,10 @@ def parse_cicids(file_path, out_dir):
             "dst_pt": int(row.get('dst_pt', 0)),
             "proto": "NA",
             "evt_id": 1000,
-            "act": str(row.get('act', 'BENIGN')),
+            "act": "L3_L4", # Force route to the Network Specialist
             "b_in": int(row.get('b_in', 0)),
-            "b_out": int(row.get('b_out', 0))
+            "b_out": int(row.get('b_out', 0)),
+            "payload": str(row.get('act', 'BENIGN')) # Store Kaggle label as payload
         }
         out_list.append(out_dict)
     
@@ -116,6 +117,7 @@ def parse_lanl_wls():
 
 def init_parsers():
     cicids_path = "data/raw/cicids/Monday-WorkingHours.pcap_ISCX.csv"
+    ddos_path = "data/raw/cicids/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv"
     apache_path = "data/raw/loghub/Apache/Apache_2k.log_structured.csv"
     linux_path = "data/raw/loghub/Linux/Linux_2k.log_structured.csv"
     windows_path = "data/raw/loghub/Windows/Windows_2k.log_structured.csv"
@@ -129,6 +131,10 @@ def init_parsers():
     if os.path.exists(cicids_path):
         print(f"Parsing {cicids_path}...")
         parse_cicids(cicids_path, out_dir)
+
+    if os.path.exists(ddos_path):
+        print(f"Parsing {ddos_path}...")
+        parse_cicids(ddos_path, out_dir)
         
     if os.path.exists(apache_path):
         print(f"Parsing {apache_path}...")

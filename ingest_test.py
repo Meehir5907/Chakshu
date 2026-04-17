@@ -4,92 +4,76 @@ import time
 from datetime import datetime
 from models.fusion.master_engine import ChakshuFusion
 
-def export_alerts(history, out_file):
-    """Helper function to dump the current engine history to JSON."""
-    export_history = []
-    for alert in history:
-        alert_copy = alert.copy()
-        # Convert datetime objects to strings so JSON doesn't crash
+def export_alerts(threat_history, output_filepath):
+    export_list = []
+    for threat_alert in threat_history:
+        alert_copy = threat_alert.copy()
         if isinstance(alert_copy["ts"], datetime):
             alert_copy["ts"] = alert_copy["ts"].isoformat()
-        export_history.append(alert_copy)
+        export_list.append(alert_copy)
 
-    os.makedirs(os.path.dirname(out_file), exist_ok=True)
-    with open(out_file, "w") as f:
-        json.dump(export_history, f, indent=4)
+    os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
+    with open(output_filepath, "w") as out_file:
+        json.dump(export_list, out_file, indent=4)
 
 def run_full_pipeline():
-    processed_dir = "data/processed"
-    out_file = "data/processed/alerts.json"
+    processed_directory = "data/processed"
+    dashboard_filepath = "data/processed/alerts.json"
     
-    # The complete roster of datasets mapped to our specialists
-    datasets = [
-        "Monday-WorkingHours.pcap_ISCX.json", # Network (L3/L4)
-        "Apache_2k.log_structured.json",      # Web App (WEB_APP)
-        "OpenSSH_2k.log_structured.json",     # Linux Gateway (AUTH_LINUX)
-        "LANL_WLS_2k.json",                   # Windows Gateway (AUTH_WINDOWS)
-        "Linux_2k.log_structured.json",       # Linux OS (HOST_LIN)
-        "Windows_2k.log_structured.json"      # Windows OS (HOST_WIN)
+    dataset_files = [
+        #"Monday-WorkingHours.pcap_ISCX.json",
+        "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.json",
+        #"Apache_2k.log_structured.json",      
+        #"OpenSSH_2k.log_structured.json",     
+        #"LANL_WLS_2k.json",                   
+        #"Linux_2k.log_structured.json",       
+        #"Windows_2k.log_structured.json"      
     ]
     
-    # Initialize the brain once
-    engine = ChakshuFusion()
-    total_records = 0
+    fusion_engine = ChakshuFusion()
+    total_scanned_records = 0
     
-    # --- Real-Time Push Trackers ---
-    logs_processed_since_last_push = 0
-    last_push_time = time.time()
+    logs_since_push = 0
+    last_push_timestamp = time.time()
     
-    print("Initializing Chakshu Fusion Engine (Streaming Mode)...")
+    print("Initializing Chakshu Fusion Engine (Silent Streaming Mode)...")
 
-    for ds in datasets:
-        target_file = os.path.join(processed_dir, ds)
+    for dataset_name in dataset_files:
+        target_filepath = os.path.join(processed_directory, dataset_name)
         
-        if not os.path.exists(target_file):
-            print(f"[!] Warning: {target_file} not found. Skipping...")
+        if not os.path.exists(target_filepath):
             continue
             
-        print(f"\n--- Ingesting {ds} ---")
-        
-        with open(target_file, "r") as f:
+        with open(target_filepath, "r") as input_file:
             try:
-                logs = json.load(f)
-            except Exception as e:
-                print(f"[ERROR] Could not read {ds}: {e}")
+                log_frames = json.load(input_file)
+            except Exception as error_msg:
                 continue
             
-        file_anomalies = 0
-        
-        for log in logs:
-            total_records += 1
-            logs_processed_since_last_push += 1
+        for single_log_frame in log_frames:
+            total_scanned_records += 1
+            logs_since_push += 1
             
-            alert = engine.process_frame(log)
-            if alert and alert["is_anomaly"]:
-                file_anomalies += 1
-                # Print a clean, matrix-style scrolling output
-                print(f"[{alert['tag']}] ALERT (Score: {alert['score']}) | IP/ID: {alert['src_ip']}")
-                print(f" > Evidence: {alert['forensics']}")
-                print(f" > Payload: {alert['payload'][:50]}...")
+            threat_alert = fusion_engine.process_frame(single_log_frame)
+            
+            if threat_alert and threat_alert["is_anomaly"]:
+                print(f"[{threat_alert['tag']}] ALERT (Score: {threat_alert['score']}) | IP/ID: {threat_alert['src_ip']}")
+                print(f" > Evidence: {threat_alert['forensics']}")
+                print(f" > Payload: {threat_alert['payload'][:50]}...")
                 print("-" * 60)
             
-            # --- The Streaming Trigger Condition ---
-            current_time = time.time()
-            if logs_processed_since_last_push >= 30 or (current_time - last_push_time) >= 20:
-                export_alerts(engine.history, out_file)
-                logs_processed_since_last_push = 0
-                last_push_time = current_time
-                
-        print(f"[+] Finished {ds} | Anomalies detected: {file_anomalies}")
+            current_timestamp = time.time()
+            if logs_since_push >= 30 or (current_timestamp - last_push_timestamp) >= 20:
+                export_alerts(fusion_engine.history, dashboard_filepath)
+                logs_since_push = 0
+                last_push_timestamp = current_timestamp
 
-    # Final push to catch any remaining alerts at the end of the run
-    export_alerts(engine.history, out_file)
+    export_alerts(fusion_engine.history, dashboard_filepath)
 
     print(f"\n==================================================")
-    print(f"--- Recon Complete. Processed {total_records} total records. ---")
-    print(f"Total Anomalies Found Across All Layers: {len(engine.history)}")
+    print(f"--- Recon Complete. Processed {total_scanned_records} total records. ---")
+    print(f"Total Anomalies Found: {len(fusion_engine.history)}")
     print(f"==================================================\n")
-    print(f"[*] The Streamlit Dashboard is ready for consumption.")
 
 if __name__ == "__main__":
     run_full_pipeline()
