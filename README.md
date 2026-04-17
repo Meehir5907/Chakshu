@@ -69,7 +69,7 @@ chmod +x setup.sh
 First, allow script execution if not already enabled:
 
 ```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUse
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 Then run:
