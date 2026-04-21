@@ -1,6 +1,8 @@
 import os
 import json
+import random
 import pandas as pd
+from tqdm import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from models.fusion.master_engine import ChakshuFusion
 from models.fusion.master_engine import AssetLoader
@@ -51,8 +53,10 @@ def evaluate_specialists_and_fusion():
 
     fusion_true = []
     fusion_pred = []
+    
+    sample_limit = 500
 
-    print("Initializing Model Evaluation...")
+    print("Initializing Model Evaluation with Progress Tracking...\n")
 
     for file_name in dataset_files:
         file_path = os.path.join(dataset_directory, file_name)
@@ -61,8 +65,11 @@ def evaluate_specialists_and_fusion():
 
         with open(file_path, "r") as input_file:
             log_frames = json.load(input_file)
+            
+        log_frames = random.sample(log_frames, min(sample_limit, len(log_frames)))
 
-        for log_frame in log_frames:
+        # Added tqdm progress bar here
+        for log_frame in tqdm(log_frames, desc=f"Evaluating {file_name[:25]:<25}", unit="logs"):
             true_anomaly = extract_ground_truth(log_frame, file_name)
             assigned_tag = log_frame.get("act", "L3_L4")
 
@@ -70,6 +77,9 @@ def evaluate_specialists_and_fusion():
                 detected_os = fusion_engine.check_os(log_frame.get("payload", ""))
                 if detected_os: 
                     assigned_tag = detected_os
+
+            if assigned_tag == "HOST_LINUX": assigned_tag = "HOST_LIN"
+            if assigned_tag == "HOST_WINDOWS": assigned_tag = "HOST_WIN"
 
             fusion_alert = fusion_engine.process_frame(log_frame)
             fusion_true.append(true_anomaly)
@@ -99,7 +109,7 @@ def evaluate_specialists_and_fusion():
                 else:
                     specialist_pred[assigned_tag].append(0)
 
-    print("\n--- Specialist Models Performance ---")
+    print("\n\n--- Specialist Models Performance ---")
     for tag_name in specialist_true.keys():
         if len(specialist_true[tag_name]) > 0:
             metrics_result = calculate_metrics(specialist_true[tag_name], specialist_pred[tag_name])
