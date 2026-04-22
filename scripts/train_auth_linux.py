@@ -45,7 +45,7 @@ def train_auth_linux():
     x_vec = vec.fit_transform(train_corp)
 
     print(f"Training One-Class SVM on {x_vec.shape[0]} records...")
-    svm_mdl = OneClassSVM(nu=0.01, kernel='rbf', gamma='scale')
+    svm_mdl = OneClassSVM(nu=0.001, kernel='rbf', gamma='scale')
     svm_mdl.fit(x_vec)
 
     os.makedirs(os.path.dirname(mdl_dest), exist_ok=True)
