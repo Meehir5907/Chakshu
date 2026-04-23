@@ -10,7 +10,7 @@ class AssetLoader:
     def __init__(self):
         self.base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.registry = {
-            "L3_L4": {"mdl": "network_flow/iforest_v1.pkl", "vec": None},
+            "L3_L4": {"mdl": "network_flow/iforest_v1.pkl", "vec": "network_flow/scaler_v1.pkl"},
             "WEB_APP": {"mdl": "network_app/svm_v1.pkl", "vec": "network_app/tfidf_v1.pkl"},
             "AUTH_LINUX": {"mdl": "auth_linux/svm_v1.pkl", "vec": "auth_linux/tfidf_v1.pkl"},
             "AUTH_WINDOWS": {"mdl": "auth_windows/svm_v1.pkl", "vec": "auth_windows/tfidf_v1.pkl"},
@@ -46,11 +46,12 @@ class ChakshuFusion:
         self.history = []
         self.all_alerts = []
         self.weights = {
-            "L3_L4": 1, "WEB_APP": 2, 
-            "AUTH_LINUX": 3, "AUTH_WINDOWS": 3, 
-            "HOST_LIN": 3, "HOST_WIN": 3
-        }
-        
+            "L3_L4": 1,                             # Max base score: 0.33 (Needs correlation)
+            "WEB_APP": 1.5,                         # Max base score: 0.50 (Needs correlation)
+            "AUTH_LINUX": 1.5, "AUTH_WINDOWS": 1.5, # Max base score: 0.50 (Needs correlation)
+            "HOST_LIN": 2.5, "HOST_WIN": 2.5        # Max base score: 0.83 (Lethal: Triggers Immediately)
+        } 
+
         self.whitelist = [
             "user news", "user cyrus", "cupsd shutdown", "session closed", "ALERT exited",
             "jk2_init", "mod_jk",
@@ -114,6 +115,10 @@ class ChakshuFusion:
             feature_values = [int(log.get("dst_pt", 0)), int(log.get("b_in", 0)), int(log.get("b_out", 0))]
             network_dataframe = pd.DataFrame([feature_values], columns=feature_columns)
             
+            if vec:
+                scaled_values = vec.transform(network_dataframe)
+                network_dataframe = pd.DataFrame(scaled_values, columns=feature_columns)
+            
             prediction = mdl.predict(network_dataframe)[0]
             base_score = 1.0 if prediction == -1 else 0.0
             
@@ -151,28 +156,45 @@ class ChakshuFusion:
                     forensics = ["Structural Anomaly (XAI Timeout)"]
 
         bonus = 0.0
+        frequency_count = 0
         
         if src_ip != "0.0.0.0":
             for prev_alert in self.history:
-                if prev_alert["src_ip"] == src_ip and prev_alert["tag"] != tag:
-                    bonus = 0.3
-                    break
+                if prev_alert["src_ip"] == src_ip:
+                    # Cross-Layer Correlation Bonus
+                    if prev_alert["tag"] != tag:
+                        bonus = 0.3
+                        break
+                    # Frequency Tracking
+                    else:
+                        frequency_count += 1
+            
+            # Frequency Escalation: If an IP hammers the exact same layer (e.g., pure DDoS flood)
+            if frequency_count > 5:
+                bonus = 0.3
 
         specialist_weight = self.weights.get(tag, 1)
         final_score = min(1.0, (base_score * specialist_weight / 3.0) + bonus)
+        
+        # The new high-precision Fusion Threshold
+        is_real_threat = final_score >= 0.60
         
         alert = {
             "ts": ts,
             "src_ip": src_ip,
             "tag": tag,
             "score": round(final_score, 2),
-            "is_anomaly": final_score > 0.3,
+            "is_anomaly": is_real_threat,
             "forensics": forensics if forensics else ["Structural Anomaly"],
             "payload": payload[:50]
         }
 
-        if alert["is_anomaly"]:
+        # THE MEMORY FIX: The engine acts as a ledger for ALL paranoid hunches
+        if base_score > 0.0:
             self.history.append(alert)
+            
+        # BUT ONLY ALERTS THE SOC IF THE CORRELATION THRESHOLD IS BREACHED
+        if is_real_threat:
             self.all_alerts.append(alert)
         
         return alert
